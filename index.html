@@ -2,1890 +2,358 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iClass 工作記錄報告自動生成系統</title>
+    <title>iClass 教案製作大師</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- Crypto-JS for encryption -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <!-- LZ-String for compression -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+    <script src="https://unpkg.com/docx@7.1.1/build/index.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
-        body { font-family: 'Noto Sans TC', sans-serif; }
-        .loading { border-top-color: #3498db; -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
-        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        /* Table fixed header */
-        .table-container { max-height: 65vh; overflow-y: auto; }
-        thead th { position: sticky; top: 0; z-index: 20; }
+        body { background-color: #f0f2f5; font-family: "Microsoft JhengHei", sans-serif; display: flex; flex-direction: column; min-height: 100vh; }
+        .studio-container { max-width: 1100px; margin: 30px auto; flex-grow: 1; width: 100%; }
+        .paper-landscape { 
+            background: white; padding: 40px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
+            border-radius: 8px; min-height: 800px;
+        }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+        td { border: 1px solid #000; padding: 10px; vertical-align: top; }
+        .bg-header { background-color: #d1d5db; font-weight: bold; color: #000; }
         
-        /* Weekend and Holiday Styles */
-        .is-weekend { background-color: #fff7ed; } /* Orange-50 */
-        .is-holiday { background-color: #fecaca !important; } /* Red-200 */
-        .is-holiday-pm { background-color: #fef08a !important; } /* Yellow-200 for PM holiday */
-        .holiday-label { font-size: 0.7em; color: #b91c1c; display: block; font-weight: bold;}
-        .holiday-label-pm { font-size: 0.7em; color: #854d0e; display: block; font-weight: bold;}
+        [contenteditable="true"] { outline: none; padding: 4px; transition: all 0.2s; border-radius: 2px; border: 1px dashed transparent; }
+        [contenteditable="true"]:hover { background-color: #eff6ff; border-color: #93c5fd; }
+        [contenteditable="true"]:focus { background-color: #fff; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        [contenteditable="true"]:empty:before { content: attr(placeholder); color: #9ca3af; pointer-events: none; }
         
-        /* Leave Styles */
-        .leave-badge { display: block; font-size: 0.75rem; padding: 2px 4px; border-radius: 4px; margin-bottom: 2px; color: white; text-align: center; cursor: help;}
-        .leave-AL { background-color: #a855f7; } /* Purple */
-        .leave-SL { background-color: #ef4444; } /* Red */
-        .leave-CL { background-color: #f59e0b; } /* Amber */
-        .leave-Other { background-color: #64748b; } /* Slate */
-        .leave-Warning { background-color: #eab308; color: black; border: 1px solid #ca8a04; } /* Yellow */
+        .btn-main { background: #2563eb; color: white; padding: 10px 24px; border-radius: 6px; font-weight: bold; transition: all 0.2s; display: flex; align-items: center; cursor: pointer; }
+        .btn-main:hover { background: #1d4ed8; }
+        .btn-import { background: white; border: 2px solid #2563eb; color: #2563eb; padding: 8px 20px; border-radius: 6px; font-weight: bold; transition: all 0.2s; display: flex; align-items: center; cursor: pointer; }
+        .btn-import:hover { background: #eff6ff; }
+        .btn-add { color: #059669; font-weight: bold; cursor: pointer; margin-top: 10px; display: inline-flex; align-items: center; padding: 5px 10px; border-radius: 4px; }
+        .delete-row { color: #dc2626; cursor: pointer; font-size: 18px; font-weight: bold; padding: 4px 8px; }
 
-        /* Time Styles */
-        .time-badge { background-color: #eff6ff; color: #1e40af; padding: 1px 6px; border-radius: 99px; font-size: 0.75rem; display: inline-block; border: 1px solid #dbeafe; }
+        #importModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
+        .modal-content { background: white; padding: 30px; border-radius: 12px; width: 90%; max-width: 700px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; }
+        textarea { width: 100%; height: 200px; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: monospace; font-size: 14px; margin: 15px 0; resize: vertical; }
+        textarea:focus { outline: 2px solid #2563eb; border-color: transparent; }
+        .error-box { background: #fee2e2; color: #b91c1c; padding: 10px; border-radius: 6px; font-size: 14px; margin-bottom: 10px; display: none; }
+        .success-msg { color: #059669; font-size: 14px; margin-top: 5px; display: none; }
         
-        /* Interactive Headers */
-        .staff-header { cursor: pointer; transition: color 0.2s; }
-        .staff-header:hover { color: #2563eb; text-decoration: underline; background-color: #eff6ff; }
-
-        /* Modal */
-        .modal { transition: opacity 0.25s ease; }
-        body.modal-active { overflow-x: hidden; overflow-y: hidden !important; }
-
-        /* Help Section */
-        .help-step { border-left: 4px solid #4f46e5; padding-left: 1rem; margin-bottom: 1.5rem; }
-        .template-btn { margin-top: 0.5rem; display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; color: #2563eb; text-decoration: underline; cursor: pointer; }
-        .template-btn:hover { color: #1d4ed8; }
-        
-        /* Tabs */
-        .tab-active { border-bottom: 2px solid #4f46e5; color: #4f46e5; font-weight: bold; }
-        .tab-inactive { color: #6b7280; }
-        .tab-inactive:hover { color: #374151; }
+        .footer-credit { text-align: center; color: #9ca3af; font-size: 0.875rem; padding: 20px 0; margin-top: auto; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 h-screen flex flex-col">
+<body>
 
-    <!-- Header -->
-    <header class="bg-indigo-700 text-white shadow-lg p-4 shrink-0 z-30">
-        <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                iClass 工作記錄報告自動生成系統
+<div class="bg-white shadow-sm border-b sticky top-0 z-50 p-4">
+    <div class="max-w-6xl mx-auto flex justify-between items-center">
+        <div>
+            <h1 class="text-xl font-bold text-gray-800 flex items-center">
+                <span class="text-2xl mr-2">🎨</span> iClass 教案製作大師
             </h1>
-            <div class="flex items-center gap-4">
-                <button onclick="showTransferModal()" class="flex items-center gap-1 bg-teal-500 hover:bg-teal-600 text-white px-3 py-1 rounded text-sm transition shadow-sm border border-teal-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                    </svg>
-                    數據轉移
-                </button>
-                <button onclick="showHelpModal()" class="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded text-sm transition">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    說明 & 範本
-                </button>
-                <div class="text-xs md:text-sm opacity-80 flex flex-col items-end">
-                    <span>版本: 8.0 (Compression)</span>
-                    <span class="text-[10px] opacity-70">Developed by Ken Law</span>
-                </div>
-            </div>
+            <p class="text-xs text-gray-500 mt-1 ml-9 font-medium">Developed by Ken Law</p>
         </div>
-    </header>
-
-    <!-- Main Content -->
-    <main class="flex-grow container mx-auto p-4 flex flex-col gap-4 overflow-hidden">
-        
-        <!-- Controls Section -->
-        <div class="bg-white p-4 rounded-lg shadow-md shrink-0 grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-            
-            <!-- Step 1: Staff List -->
-            <div class="col-span-1 border-r border-gray-100 pr-2">
-                <h2 class="font-bold mb-2 text-indigo-700 flex items-center gap-1">
-                    <span class="bg-indigo-100 text-indigo-700 rounded-full w-5 h-5 flex items-center justify-center text-xs">1</span>
-                    員工名單 (Staff List)
-                </h2>
-                <input type="file" id="staffInput" accept=".csv, .xlsx, .xls" class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer mb-1"/>
-                <p class="text-[10px] text-gray-400">必要。只載入 Active='Y' 的員工</p>
-            </div>
-
-            <!-- Step 2: Attendance -->
-            <div class="col-span-1 border-r border-gray-100 pr-2">
-                <h2 class="font-bold mb-2 text-indigo-700 flex items-center gap-1">
-                    <span class="bg-indigo-100 text-indigo-700 rounded-full w-5 h-5 flex items-center justify-center text-xs">2</span>
-                    打卡記錄 (Data Sheet)
-                </h2>
-                <input type="file" id="attendanceInput" accept=".csv, .xlsx, .xls" class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer mb-1"/>
-            </div>
-
-            <!-- Step 3: Leave -->
-            <div class="col-span-1 border-r border-gray-100 pr-2">
-                <h2 class="font-bold mb-2 text-indigo-700 flex items-center gap-1">
-                    <span class="bg-indigo-100 text-indigo-700 rounded-full w-5 h-5 flex items-center justify-center text-xs">3</span>
-                    請假記錄 (Leave Form)
-                </h2>
-                <input type="file" id="leaveInput" accept=".csv, .xlsx, .xls" class="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer mb-1"/>
-                <p class="text-[10px] text-gray-400">自動比對 Active 員工名單</p>
-            </div>
-
-            <!-- Step 4: Config -->
-            <div class="col-span-1">
-                <div class="flex justify-between items-center mb-1">
-                    <h2 class="font-bold text-gray-700">設定 (Config)</h2>
-                    <div class="flex gap-2">
-                        <button onclick="toggleConfig('holiday')" class="text-xs text-blue-500 hover:underline">公眾假期</button>
-                    </div>
-                </div>
-                
-                <!-- Holiday Config Panel -->
-                <div id="holidayConfigPanel" class="hidden absolute bg-white shadow-xl border p-4 rounded-lg z-50 w-96 mt-2 right-10">
-                    <h3 class="font-bold text-gray-700 mb-2">公眾假期 (YYYY-MM-DD, Name)</h3>
-                    <textarea id="holidayConfig" class="w-full h-32 p-2 border rounded text-xs font-mono" placeholder="2025-01-01,New Year Day"></textarea>
-                    <div class="flex justify-end mt-2">
-                        <button onclick="saveConfig()" class="bg-indigo-600 text-white px-3 py-1 rounded text-xs">更新設定</button>
-                        <button onclick="toggleConfig('holiday')" class="ml-2 text-gray-500 text-xs">關閉</button>
-                    </div>
-                </div>
-
-                <div id="statusMsg" class="text-xs text-green-600 font-medium h-4"></div>
-            </div>
-        </div>
-
-        <!-- Output Section -->
-        <div class="bg-white rounded-lg shadow-md flex flex-col flex-grow overflow-hidden relative border border-gray-200">
-            <!-- Tabs -->
-            <div class="flex items-center justify-between bg-gray-50 border-b border-gray-200 p-2 shrink-0">
-                <div id="monthTabs" class="flex overflow-x-auto gap-1">
-                    <div class="text-gray-400 text-sm p-2 italic">請依序上傳: 1.員工名單 -> 2.打卡記錄...</div>
-                </div>
-                
-                <div id="actionButtons" class="hidden flex gap-2">
-                    <button onclick="exportAllStaffWord()" class="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs transition shadow-sm" title="將所有員工的考勤表合併在一個 Word 檔中">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                        </svg>
-                        批量下載 (Word)
-                    </button>
-                     <button onclick="showStatsModal()" class="flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded text-xs transition shadow-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                        統計報告
-                    </button>
-                    <button onclick="exportCurrentTable()" class="flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-xs transition shadow-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        Excel
-                    </button>
-                </div>
-            </div>
-
-            <!-- Data Table -->
-            <div class="table-container flex-grow relative overflow-auto">
-                <table id="resultTable" class="min-w-full divide-y divide-gray-200 hidden border-separate" style="border-spacing: 0;">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-100 z-30 border-r border-b shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[140px]">
-                                日期 / 同事
-                            </th>
-                            <!-- Staff headers -->
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        <!-- Rows -->
-                    </tbody>
-                </table>
-                
-                <!-- Empty State -->
-                <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                    <p class="text-sm">請先上傳「員工名單」，再上傳「打卡記錄」。</p>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <!-- Help Modal -->
-    <div id="helpModal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
-        <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50"></div>
-        <div class="modal-container bg-white w-11/12 md:max-w-3xl mx-auto rounded shadow-lg z-50 overflow-y-auto max-h-[90vh]">
-            <div class="modal-content py-4 text-left px-6">
-                <div class="flex justify-between items-center pb-3 border-b">
-                    <p class="text-2xl font-bold text-indigo-700">新手指南 & 檔案範本</p>
-                    <div class="modal-close cursor-pointer" onclick="closeModal('helpModal')">
-                        <svg class="fill-current text-black" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path d="M14.53 4.53l-1.06-1.06L9 7.94 4.53 3.47 3.47 4.53 7.94 9l-4.47 4.47 1.06 1.06L9 10.06l4.47 4.47 1.06-1.06L10.06 9z"></path></svg>
-                    </div>
-                </div>
-                <div class="my-5 text-sm text-gray-700">
-                    <div class="help-step">
-                        <h3 class="font-bold text-lg text-gray-800">1. 準備檔案 (依序上傳)</h3>
-                        <p class="mb-2">請確保您的三個檔案符合以下格式 (點擊下載範本)：</p>
-                        <ul class="list-disc pl-5 space-y-3">
-                            <li>
-                                <strong>(1) 員工名單 (Staff List):</strong> 
-                                <br>必要。只處理 Active='Y' 的員工。欄位: <code>Staff No.</code>, <code>Name</code>, <code>Full Name</code>, <code>Active</code>
-                                <br><button onclick="downloadStaffTemplate()" class="template-btn"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> 下載員工名單範本 (Staff_List.csv)</button>
-                            </li>
-                            <li>
-                                <strong>(2) 打卡記錄 (Attendance Data):</strong> 
-                                <br>從打卡機匯出。欄位: <code>staff no.</code>, <code>date</code> (時間戳記)
-                                <br><button onclick="downloadAttendanceTemplate()" class="template-btn"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> 下載打卡記錄範本 (Attendance.csv)</button>
-                            </li>
-                            <li>
-                                <strong>(3) 請假記錄 (Leave Form):</strong> 
-                                <br>請假申請表。欄位: <code>Full Name</code>, <code>Leave Type</code>, <code>Start Date</code>, <code>End Date</code>, <code>Days Applied</code>, <code>Status</code>
-                                <br><button onclick="downloadLeaveTemplate()" class="template-btn"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> 下載請假記錄範本 (Leave.csv)</button>
-                            </li>
-                        </ul>
-                    </div>
-                    
-                    <div class="help-step">
-                        <h3 class="font-bold text-lg text-gray-800">2. 處理流程</h3>
-                        <p class="mb-2">系統會自動執行以下智能處理：</p>
-                        <ul class="list-disc pl-5 space-y-1">
-                            <li><strong>自動過濾：</strong> 只顯示「員工名單」中有在職 (Active) 的同事。</li>
-                            <li><strong>名稱匹配：</strong> 請假記錄中的 Full Name 會自動對應到員工編號。若找不到對應員工，系統會發出警示。</li>
-                            <li><strong>排除假日：</strong> 計算請假天數時，會自動扣除週末及香港公眾假期。</li>
-                            <li><strong>異常檢測：</strong> 自動計算「Missing Punch」(有上班沒下班，或反之) 的日數。</li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="flex justify-end">
-                    <button class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-500" onclick="closeModal('helpModal')">開始使用</button>
-                </div>
-            </div>
+        <div class="flex gap-4">
+            <button onclick="openModal()" class="btn-import">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                匯入 AI 數據
+            </button>
+            <button id="exportBtn" class="btn-main">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                下載 Word (.docx)
+            </button>
         </div>
     </div>
+</div>
 
-    <!-- Data Transfer Modal -->
-    <div id="transferModal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
-        <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50"></div>
-        <div class="modal-container bg-white w-11/12 md:max-w-4xl mx-auto rounded shadow-lg z-50 overflow-y-auto max-h-[90vh]">
-            <div class="modal-content py-4 text-left px-6">
-                <div class="flex justify-between items-center pb-3 border-b">
-                    <p class="text-2xl font-bold text-teal-600">數據轉移與還原 (加密 & 壓縮)</p>
-                    <div class="modal-close cursor-pointer" onclick="closeModal('transferModal')">
-                        <svg class="fill-current text-black" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path d="M14.53 4.53l-1.06-1.06L9 7.94 4.53 3.47 3.47 4.53 7.94 9l-4.47 4.47 1.06 1.06L9 10.06l4.47 4.47 1.06-1.06L10.06 9z"></path></svg>
-                    </div>
-                </div>
-                
-                <div class="flex border-b border-gray-200 mt-4">
-                    <button id="tabExport" onclick="switchTransferTab('export')" class="py-2 px-4 text-sm font-medium tab-active w-1/2 text-center">加密匯出</button>
-                    <button id="tabImport" onclick="switchTransferTab('import')" class="py-2 px-4 text-sm font-medium tab-inactive w-1/2 text-center">還原資料</button>
-                </div>
-
-                <!-- Export View -->
-                <div id="viewExport" class="mt-4 p-2">
-                    <p class="text-sm text-gray-600 mb-2">將當前所有數據壓縮並加密。若資料量大於 WhatsApp 限制，請下載備份檔。</p>
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">設定密碼 (可選):</label>
-                        <input type="password" id="exportPassword" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" placeholder="請輸入加密密碼 (預設為空)">
-                    </div>
-                    <button onclick="generateTransferCode()" class="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full mb-4">生成加密代碼 / 下載備份檔</button>
-                    
-                    <div id="exportResult" class="hidden">
-                        <div id="textModeSection">
-                            <label class="block text-gray-700 text-sm font-bold mb-2">轉移代碼 (適合 WhatsApp):</label>
-                            <textarea id="transferCodeOutput" readonly class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline text-xs font-mono h-24 bg-gray-50"></textarea>
-                            <button onclick="copyToClipboard()" class="mt-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-3 rounded text-xs">複製到剪貼簿</button>
-                        </div>
-                        
-                        <div id="fileModeSection" class="hidden mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                            <p class="text-sm text-yellow-800 font-bold mb-2">⚠️ 資料量過大，無法使用文字複製 (超過 WhatsApp 限制)。</p>
-                            <p class="text-xs text-yellow-700 mb-2">請下載下方的備份檔案 (.txt)，直接在 WhatsApp 傳送該檔案。</p>
-                            <button onclick="downloadTransferFile()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                下載加密備份檔 (.txt)
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Import View -->
-                <div id="viewImport" class="mt-4 hidden p-2">
-                    <p class="text-sm text-gray-600 mb-2">貼上轉移代碼，或上傳備份檔 (.txt) 以還原數據。</p>
-                    
-                    <div class="mb-4 border-b pb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">方法 A: 上傳備份檔 (推薦)</label>
-                        <input type="file" id="backupFileInput" accept=".txt" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-teal-50 file:text-teal-700 hover:file:bg-teal-100 cursor-pointer"/>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">方法 B: 貼上轉移代碼</label>
-                        <textarea id="transferCodeInput" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline text-xs font-mono h-24" placeholder="在此貼上代碼..."></textarea>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">解密密碼:</label>
-                        <input type="password" id="importPassword" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" placeholder="若有設定密碼請輸入">
-                    </div>
-                    <button onclick="restoreData()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full mb-4">還原數據</button>
-                    
-                    <!-- File Recovery Section -->
-                    <div id="recoverySection" class="hidden mt-4 pt-4 border-t border-gray-200">
-                        <h4 class="font-bold text-green-700 mb-2 flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            數據還原成功！您現在可以下載原始檔案：
-                        </h4>
-                        <div class="flex flex-col gap-2">
-                            <button onclick="downloadRestoredFile('staff')" id="btnRecStaff" class="bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-2 px-4 border border-gray-400 rounded shadow text-sm text-left opacity-50 cursor-not-allowed" disabled>1. 下載 Staff List.csv</button>
-                            <button onclick="downloadRestoredFile('attendance')" id="btnRecAtt" class="bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-2 px-4 border border-gray-400 rounded shadow text-sm text-left opacity-50 cursor-not-allowed" disabled>2. 下載 Attendance.csv</button>
-                            <button onclick="downloadRestoredFile('leave')" id="btnRecLeave" class="bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-2 px-4 border border-gray-400 rounded shadow text-sm text-left opacity-50 cursor-not-allowed" disabled>3. 下載 Leave Form.csv</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+<div id="importModal" class="flex">
+    <div class="modal-content">
+        <h2 class="text-xl font-bold text-gray-800 mb-1">匯入 AI 生成的數據</h2>
+        <p class="text-sm text-gray-600">請貼上 JSON 代碼。系統會自動進行內容清洗與格式化。</p>
+        <textarea id="jsonInput" placeholder='{ "topic": "...", "flow": [...] }' oninput="resetError()"></textarea>
+        <div id="errorBox" class="error-box">
+            <p id="errorText" class="font-bold"></p>
+            <button onclick="autoFixJSON()" class="mt-2 bg-red-100 text-red-700 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 border border-red-300">✨ 強力修復 (Fix & Clean)</button>
+        </div>
+        <div id="successMsg" class="success-msg font-bold">✅ 格式正確！準備匯入...</div>
+        <div class="flex justify-end gap-3 mt-2">
+            <button onclick="closeModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition">取消</button>
+            <button onclick="processData()" class="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition shadow">開始製作</button>
         </div>
     </div>
+</div>
 
-    <!-- Integrated Stats Modal -->
-    <div id="statsModal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
-        <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50"></div>
-        <div class="modal-container bg-white w-11/12 md:max-w-6xl mx-auto rounded shadow-lg z-50 overflow-y-auto max-h-[95vh]">
-            <div class="modal-content py-4 text-left px-6">
-                <div class="flex justify-between items-center pb-3 border-b">
-                    <p class="text-2xl font-bold text-gray-800" id="statsTitle">統計報告</p>
-                    <div class="modal-close cursor-pointer" onclick="closeModal('statsModal')">
-                        <svg class="fill-current text-black" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path d="M14.53 4.53l-1.06-1.06L9 7.94 4.53 3.47 3.47 4.53 7.94 9l-4.47 4.47 1.06 1.06L9 10.06l4.47 4.47 1.06-1.06L10.06 9z"></path></svg>
-                    </div>
-                </div>
-                
-                <!-- Tabs -->
-                <div class="flex border-b border-gray-200 mt-2">
-                    <button id="tabMonthly" onclick="switchStatsTab('monthly')" class="py-2 px-4 text-sm font-medium tab-active">月度報告 (Monthly)</button>
-                    <button id="tabQuarterly" onclick="switchStatsTab('quarterly')" class="py-2 px-4 text-sm font-medium tab-inactive">季度報告 (Quarterly)</button>
-                </div>
+<div class="studio-container">
+    <div class="paper-landscape">
+        <div id="lessonForm">
+            <!-- Header Info -->
+            <table>
+                <tr>
+                    <td class="bg-header w-24">科目</td>
+                    <td contenteditable="true" id="subject" placeholder="[請輸入科目]"></td>
+                    <td class="bg-header w-32">建議學習年級</td>
+                    <td contenteditable="true" id="grade" placeholder="[請輸入年級]"></td>
+                </tr>
+                <tr>
+                    <td class="bg-header">課題</td>
+                    <td contenteditable="true" id="topic" placeholder="[請輸入課題名稱]"></td>
+                    <td class="bg-header">教學工具</td>
+                    <td contenteditable="true" id="tools" placeholder="[請輸入硬件/軟件]"></td>
+                </tr>
+            </table>
 
-                <!-- Monthly View -->
-                <div id="viewMonthly" class="mt-4">
-                    <!-- Controls -->
-                    <div class="flex items-center gap-4 mb-4">
-                        <label class="text-sm font-bold text-gray-700">選擇月份:</label>
-                        <select id="statsMonthSelect" class="border rounded p-1 text-sm bg-white shadow-sm" onchange="renderMonthlyStats(this.value)"></select>
-                    </div>
+            <!-- Objectives & Resources -->
+            <table>
+                <tr>
+                    <td class="bg-header w-1/2">學習目標</td>
+                    <td class="bg-header w-1/2">教學資源</td>
+                </tr>
+                <tr>
+                    <td contenteditable="true" id="objectives" placeholder="1. ..."></td>
+                    <td contenteditable="true" id="resources" placeholder="1. 影片：...&#10;2. 工作紙：..."></td>
+                </tr>
+                <tr>
+                    <td class="bg-header">學生已有知識</td>
+                    <td contenteditable="true" id="priorKnowledge" colspan="3" placeholder="[例如：無]"></td>
+                </tr>
+                <tr>
+                    <td class="bg-header">建議課節</td>
+                    <td contenteditable="true" id="duration" colspan="3" placeholder="[例如：共 1 節或 2 節；每節 35 分鐘]"></td>
+                </tr>
+            </table>
 
-                    <!-- Attention -->
-                    <div id="attentionSection" class="hidden mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <h3 class="text-md font-bold text-yellow-800 flex items-center gap-2 mb-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
-                            請注意：本月發現需要特別處理的記錄
-                        </h3>
-                        <ul id="attentionList" class="list-disc pl-5 text-sm text-yellow-900 space-y-1"></ul>
-                    </div>
-
-                    <!-- Stats Table -->
-                    <h3 class="text-lg font-bold text-indigo-700 flex items-center gap-2 mb-2">月度考勤統計</h3>
-                    <div class="overflow-x-auto mb-6 border rounded-lg">
-                        <table id="statsTable" class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">姓名 (Name)</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">工作天數</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">總工時 (hrs)</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-orange-600 uppercase border-l border-r border-orange-100 bg-orange-50">異常打卡 (天數)</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-purple-600 uppercase">Annual Leave</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-red-600 uppercase">Sick Leave</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-600 uppercase">Other Leave</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200 text-sm"></tbody>
-                        </table>
-                    </div>
-
-                    <!-- Leave List -->
-                    <h3 class="text-lg font-bold text-blue-700 flex items-center gap-2 mb-2">本月詳細請假清單</h3>
-                    <div class="overflow-x-auto border rounded-lg max-h-[30vh] overflow-y-auto">
-                        <table id="statsLeaveTable" class="min-w-full divide-y divide-gray-200 text-sm">
-                            <thead class="bg-blue-50 sticky top-0">
-                                <tr>
-                                    <th class="px-4 py-2 text-left font-medium text-blue-800">日期範圍</th>
-                                    <th class="px-4 py-2 text-left font-medium text-blue-800">員工姓名</th>
-                                    <th class="px-4 py-2 text-left font-medium text-blue-800">假別</th>
-                                    <th class="px-4 py-2 text-center font-medium text-blue-800">申請天數</th>
-                                    <th class="px-4 py-2 text-left font-medium text-blue-800">備註</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Quarterly View -->
-                <div id="viewQuarterly" class="mt-4 hidden">
-                    <div class="flex items-center gap-4 mb-4">
-                        <label class="text-sm font-bold text-gray-700">選擇季度:</label>
-                        <select id="statsQuarterSelect" class="border rounded p-1 text-sm bg-white shadow-sm" onchange="renderQuarterlyStats(this.value)"></select>
-                    </div>
-                    <h3 id="quarterTitle" class="text-lg font-bold text-teal-700 flex items-center gap-2 mb-2">季度統計報告</h3>
-                    <div class="overflow-x-auto border rounded-lg">
-                        <table id="quarterTable" class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-teal-50">
-                                <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">姓名 (Name)</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">總工作天數</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">總工時 (hrs)</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-purple-600 uppercase">Annual Leave (Total)</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-red-600 uppercase">Sick Leave (Total)</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-600 uppercase">Other Leave (Total)</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200 text-sm"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="flex justify-end pt-4">
-                    <button class="px-4 py-2 bg-indigo-500 rounded-lg text-white hover:bg-indigo-400" onclick="exportStats()">下載當前報告 (Excel)</button>
-                    <button class="ml-2 px-4 py-2 bg-gray-200 rounded-lg text-gray-700 hover:bg-gray-300 mr-2" onclick="closeModal('statsModal')">關閉</button>
-                </div>
+            <!-- Flow -->
+            <h3 class="font-bold text-lg mb-3 text-gray-700 border-l-4 border-blue-600 pl-3">第一教節大綱</h3>
+            <table id="flowTable">
+                <tr class="bg-header text-center">
+                    <td style="width: 10%">時間</td>
+                    <td style="width: 65%">教學流程</td> 
+                    <td style="width: 20%">備註</td>
+                    <td style="width: 5%" class="border-none bg-white"></td>
+                </tr>
+                <tr class="flow-row">
+                    <td contenteditable="true" class="text-center row-time" placeholder="5 分鐘"></td>
+                    <td>
+                        <div contenteditable="true" class="font-bold row-title" placeholder="[步驟標題]"></div>
+                        <div contenteditable="true" class="row-content" placeholder="1. 內容描述..."></div>
+                    </td>
+                    <td contenteditable="true" class="row-note" placeholder="[連結 / 資源]"></td>
+                    <td class="border-none text-center align-middle"><span class="delete-row" onclick="removeRow(this)">×</span></td>
+                </tr>
+            </table>
+            
+            <div id="addBtnContainer">
+                <span class="btn-add" onclick="addNewRow()">
+                    <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    增加教學步驟
+                </span>
             </div>
+
+            <!-- Footer -->
+            <table class="mt-8">
+                <tr>
+                    <td class="bg-header w-32">教師評估</td>
+                    <td contenteditable="true" id="assessment" placeholder="[評估方式...]"></td>
+                </tr>
+            </table>
         </div>
     </div>
+    
+    <div class="footer-credit">Developed by Ken Law</div>
+</div>
 
-    <!-- Staff Detail Modal -->
-    <div id="staffDetailModal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
-        <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50"></div>
-        <div class="modal-container bg-white w-11/12 md:max-w-4xl mx-auto rounded shadow-lg z-50 overflow-y-auto max-h-[80vh]">
-            <div class="modal-content py-4 text-left px-6">
-                <div class="flex justify-between items-center pb-3 border-b">
-                    <p class="text-xl font-bold text-gray-800" id="staffDetailTitle">員工詳情</p>
-                    <div class="modal-close cursor-pointer" onclick="closeModal('staffDetailModal')">
-                        <svg class="fill-current text-black" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path d="M14.53 4.53l-1.06-1.06L9 7.94 4.53 3.47 3.47 4.53 7.94 9l-4.47 4.47 1.06 1.06L9 10.06l4.47 4.47 1.06-1.06L10.06 9z"></path></svg>
-                    </div>
-                </div>
-                
-                <div class="my-4">
-                    <div class="flex justify-between items-end mb-2">
-                        <h4 class="font-bold text-gray-600">本月請假記錄:</h4>
-                        <!-- Word Export Button -->
-                        <button id="btnExportWord" class="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm transition shadow-sm">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                            </svg>
-                            下載考勤確認表 (Word)
-                        </button>
-                    </div>
-                    <div class="overflow-x-auto border rounded-lg">
-                        <table id="staffLeaveTable" class="min-w-full divide-y divide-gray-200 text-sm">
-                            <thead class="bg-blue-50">
-                                <tr>
-                                    <th class="px-4 py-2 text-left font-medium text-blue-800">日期範圍</th>
-                                    <th class="px-4 py-2 text-left font-medium text-blue-800">假別</th>
-                                    <th class="px-4 py-2 text-center font-medium text-blue-800">日數</th>
-                                    <th class="px-4 py-2 text-left font-medium text-blue-800">備註</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200"></tbody>
-                        </table>
-                    </div>
-                </div>
-                
-                <div class="flex justify-end pt-2">
-                    <button class="ml-2 px-4 py-2 bg-gray-200 rounded-lg text-gray-700 hover:bg-gray-300" onclick="closeModal('staffDetailModal')">關閉</button>
-                </div>
-            </div>
-        </div>
-    </div>
+<script>
+    const { Document, Packer, Paragraph, Table, TableRow, TableCell, WidthType, TextRun, HeadingLevel, AlignmentType, PageOrientation, VerticalAlign, BorderStyle } = docx;
 
-    <script>
-        // --- 1. Configuration & Initial Data ---
-        
-        // HK Public Holidays (2025-2026) + iClass Special Holidays
-        const defaultHolidays = `2025-01-01,1月1日
-2025-01-29,農曆年初一
-2025-01-30,農曆年初二
-2025-01-31,農曆年初三
-2025-04-04,清明節
-2025-04-18,耶穌受難節
-2025-04-19,耶穌受難節翌日
-2025-04-21,復活節星期一
-2025-05-01,勞動節
-2025-05-05,佛誕
-2025-05-31,端午節
-2025-07-01,特區成立紀念日
-2025-10-01,國慶日
-2025-10-07,中秋節翌日
-2025-10-29,重陽節
-2025-12-24,iClass福利假 (PM)
-2025-12-25,聖誕節
-2025-12-26,聖誕節後第一個周日
-2025-12-31,iClass福利假 (PM)
-2026-01-01,1月1日
-2026-02-16,iClass福利假 (PM)
-2026-02-17,農曆年初一
-2026-02-18,農曆年初二
-2026-02-19,農曆年初三
-2026-03-16,iClass福利假
-2026-04-03,耶穌受難節
-2026-04-04,耶穌受難節翌日
-2026-04-06,復活節星期一
-2026-04-05,清明節
-2026-05-01,勞動節
-2026-05-25,佛誕
-2026-06-19,端午節
-2026-07-01,特區成立紀念日
-2026-09-26,中秋節翌日
-2026-10-01,國慶日
-2026-10-20,重陽節
-2026-12-25,聖誕節
-2026-12-26,聖誕節後第一個周日`;
+    function openModal() { document.getElementById('importModal').style.display = 'flex'; document.getElementById('jsonInput').focus(); }
+    function closeModal() { document.getElementById('importModal').style.display = 'none'; resetError(); }
+    function resetError() { document.getElementById('errorBox').style.display = 'none'; document.getElementById('successMsg').style.display = 'none'; }
 
-        let staffMap = new Map(); // ID -> Name (Short)
-        let nameToIdMap = new Map(); // Full Name -> ID
-        let holidayMap = new Map(); // DateString -> Holiday Name
-        let activeStaffIds = new Set(); // Stores IDs of Active='Y' staff
-        
-        let attendanceData = {}; // { "2025-06": { date: { staffId: [times] } } }
-        let leaveData = {}; // { date: { staffId: [ {type, duration, session, isComplex, remarks} ] } }
-        let leaveRecords = []; // Array of {staffId, name, type, start, end, daysApplied, remarks, isComplex, isAddComp}
-        let currentMonthKey = null;
-        let currentView = 'monthly'; // 'monthly' or 'quarterly'
+    function addNewRow(time = "", title = "", content = "", note = "") {
+        const table = document.getElementById('flowTable');
+        const row = document.createElement('tr');
+        row.className = "flow-row";
+        row.innerHTML = `
+            <td contenteditable="true" class="text-center row-time">${time}</td>
+            <td>
+                <div contenteditable="true" class="font-bold row-title">${title}</div>
+                <div contenteditable="true" class="row-content">${content}</div>
+            </td>
+            <td contenteditable="true" class="row-note">${note}</td>
+            <td class="border-none text-center align-middle"><span class="delete-row" onclick="removeRow(this)">×</span></td>
+        `;
+        table.appendChild(row);
+    }
 
-        // Raw File Storage for Transfer
-        let rawFiles = {
-            staff: null,
-            attendance: null,
-            leave: null
-        };
+    function removeRow(btn) {
+        const row = btn.closest('tr');
+        if (document.querySelectorAll('.flow-row').length > 1) row.remove();
+        else { ['row-time','row-title','row-content','row-note'].forEach(c=>row.querySelector('.'+c).innerText=''); }
+    }
 
-        // Initialize
-        document.getElementById('holidayConfig').value = defaultHolidays;
-        parseConfigs();
+    function autoFixJSON() {
+        let str = document.getElementById('jsonInput').value;
+        str = str.replace(/\[cite[^\]]*\]/g, ""); 
+        str = str.replace(/\[cite_start\]/g, "");
+        str = str.replace(/\[cite_end\]/g, "");
+        str = str.replace(/\*\*/g, ""); 
+        str = str.replace(/([^\,\{\}\[\]\s])\s*\n\s*([^\s\{\}\[\]])/g, "$1\\n$2");
+        str = str.replace(/“/g, '"').replace(/”/g, '"');
+        document.getElementById('jsonInput').value = str;
+        processData(true);
+    }
 
-        function toggleConfig(type) {
-            const holidayPanel = document.getElementById('holidayConfigPanel');
-            if (type === 'holiday') {
-                holidayPanel.classList.toggle('hidden');
-            }
-        }
+    function processData(isRetry = false) {
+        const jsonStr = document.getElementById('jsonInput').value;
+        if (!jsonStr.trim()) return;
 
-        function saveConfig() {
-            parseConfigs();
-            document.getElementById('statusMsg').innerText = "設定已更新！";
-            if (currentMonthKey) renderTable(currentMonthKey);
-            setTimeout(() => document.getElementById('statusMsg').innerText = "", 2000);
-            document.getElementById('holidayConfigPanel').classList.add('hidden');
-        }
-
-        function parseConfigs() {
-            // Holidays
-            holidayMap.clear();
-            const holidayRaw = document.getElementById('holidayConfig').value;
-            holidayRaw.split('\n').forEach(line => {
-                const parts = line.split(',');
-                if (parts.length >= 2) {
-                    const date = parts[0].trim(); // YYYY-MM-DD
-                    const name = parts.slice(1).join(',').trim();
-                    if (date) holidayMap.set(date, name);
+        try {
+            const data = JSON.parse(jsonStr);
+            const setT = (id, k) => { if(data[k]) document.getElementById(id).innerText = data[k]; };
+            const setH = (id, k) => { 
+                if(data[k]) {
+                    // v9.3 強力清洗：移除課本、教材、硬件，以及 "第 xx 頁"
+                    let cleanContent = data[k]
+                        .replace(/學與教資源[:：]?/g, "")
+                        .replace(/<strong>學與教資源<\/strong>/g, "")
+                        .replace(/平板電腦/g, "")
+                        .replace(/iPad/gi, "")
+                        .replace(/電腦/g, "")
+                        .replace(/PhotoGrid/gi, "")
+                        .replace(/Sketchpad/gi, "")
+                        .replace(/應用程式/g, "")
+                        .replace(/電子課本/g, "")
+                        .replace(/課本/g, "")
+                        .replace(/教材/g, "")
+                        .replace(/教學簡報/g, "")
+                        .replace(/簡報/g, "")
+                        .replace(/PDF/gi, "")
+                        .replace(/第\s*\d+\s*頁/g, "") // 移除頁碼引用
+                        .replace(/P\.\d+/gi, "") // 移除 P.xx
+                        .replace(/、\s*、/g, "、")
+                        .replace(/^\s*、/g, "")
+                        .replace(/、\s*$/g, "")
+                        .replace(/\(.*\)/g, "")
+                        .replace(/^\d+\.\s*$/gm, "")
+                        .trim();
+                    document.getElementById(id).innerHTML = cleanContent; 
                 }
-            });
-        }
-
-        // --- 2. Helper Functions ---
-        
-        function parseSmartDate(dateStr) {
-            if (!dateStr) return null;
-            dateStr = dateStr.trim();
-            
-            const ddmmyyyy = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-            if (ddmmyyyy) {
-                const day = parseInt(ddmmyyyy[1], 10);
-                const month = parseInt(ddmmyyyy[2], 10);
-                const year = parseInt(ddmmyyyy[3], 10);
-                return new Date(year, month - 1, day);
-            }
-
-            const yyyymmdd = dateStr.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-            if (yyyymmdd) {
-                const year = parseInt(yyyymmdd[1], 10);
-                const month = parseInt(yyyymmdd[2], 10);
-                const day = parseInt(yyyymmdd[3], 10);
-                return new Date(year, month - 1, day);
-            }
-
-            const d = new Date(dateStr);
-            return isNaN(d.getTime()) ? null : d;
-        }
-
-        function countWorkingDays(start, end) {
-            let count = 0;
-            let curr = new Date(start);
-            while (curr <= end) {
-                const day = curr.getDay();
-                const y = curr.getFullYear();
-                const m = String(curr.getMonth() + 1).padStart(2, '0');
-                const d = String(curr.getDate()).padStart(2, '0');
-                const dateKey = `${y}-${m}-${d}`;
-                
-                // Note: iClass Welfare Leave is considered a holiday here (so not working day)
-                // PM holidays will also be counted as "holiday" in map, so 0 working days.
-                // This is generally correct for calculating complexity (Range vs Applied).
-                if (day !== 0 && day !== 6 && !holidayMap.has(dateKey)) {
-                    count++;
-                }
-                curr.setDate(curr.getDate() + 1);
-            }
-            return count;
-        }
-
-        function closeModal(id) {
-            document.body.classList.remove('modal-active');
-            document.getElementById(id).classList.add('opacity-0', 'pointer-events-none');
-        }
-
-        function showHelpModal() {
-            document.body.classList.add('modal-active');
-            document.getElementById('helpModal').classList.remove('opacity-0', 'pointer-events-none');
-        }
-
-        function showTransferModal() {
-            document.body.classList.add('modal-active');
-            document.getElementById('transferModal').classList.remove('opacity-0', 'pointer-events-none');
-            switchTransferTab('export'); // Default
-        }
-
-        function switchTransferTab(tab) {
-            const tExport = document.getElementById('tabExport');
-            const tImport = document.getElementById('tabImport');
-            const vExport = document.getElementById('viewExport');
-            const vImport = document.getElementById('viewImport');
-
-            if(tab === 'export') {
-                tExport.className = "py-2 px-4 text-sm font-medium tab-active w-1/2 text-center";
-                tImport.className = "py-2 px-4 text-sm font-medium tab-inactive w-1/2 text-center";
-                vExport.classList.remove('hidden');
-                vImport.classList.add('hidden');
-            } else {
-                tExport.className = "py-2 px-4 text-sm font-medium tab-inactive w-1/2 text-center";
-                tImport.className = "py-2 px-4 text-sm font-medium tab-active w-1/2 text-center";
-                vExport.classList.add('hidden');
-                vImport.classList.remove('hidden');
-            }
-        }
-
-        // --- 3. File Handling ---
-
-        document.getElementById('staffInput').addEventListener('change', (e) => handleFile(e, 'staff'), false);
-        document.getElementById('attendanceInput').addEventListener('change', (e) => handleFile(e, 'attendance'), false);
-        document.getElementById('leaveInput').addEventListener('change', (e) => handleFile(e, 'leave'), false);
-
-        function handleFile(evt, type) {
-            const file = evt.target.files[0];
-            if (!file) return;
-
-            if (type === 'attendance') {
-                document.getElementById('emptyState').innerHTML = `<div class="loading ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div><p>正在處理打卡數據...</p>`;
-            }
-
-            // Read file as text to store raw content
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const text = e.target.result;
-                
-                // Store raw content for Transfer
-                rawFiles[type] = text;
-
-                // Parse
-                Papa.parse(text, {
-                    header: true,
-                    skipEmptyLines: true,
-                    complete: function(results) {
-                        if (type === 'staff') {
-                            processStaffData(results.data);
-                        } else if (type === 'attendance') {
-                            processAttendanceData(results.data);
-                        } else {
-                            leaveData = {};
-                            leaveRecords = [];
-                            processLeaveData(results.data);
-                        }
-                    },
-                    error: function(err) {
-                        alert("讀取文件錯誤: " + err.message);
-                    }
-                });
-            };
-            reader.readAsText(file);
-        }
-
-        // --- 4. Data Processing ---
-
-        function processStaffData(data) {
-            staffMap.clear();
-            nameToIdMap.clear();
-            activeStaffIds.clear();
-            let count = 0;
-
-            const firstRow = data[0];
-            const keys = Object.keys(firstRow);
-            
-            // Try to find correct keys
-            let idKey = keys.find(k => k.toLowerCase().includes('staff') && k.toLowerCase().includes('no'));
-            let shortNameKey = keys.find(k => k.trim() === 'Name' || k.trim() === 'name');
-            let fullNameKey = keys.find(k => k.toLowerCase().includes('full') && k.toLowerCase().includes('name'));
-            let activeKey = keys.find(k => k.toLowerCase().includes('active'));
-
-            if (!idKey || !shortNameKey || !activeKey) {
-                alert("員工名單格式不符。請確保包含 'Staff No.', 'Name', 'Full Name', 'Active' 欄位。");
-                return;
-            }
-
-            data.forEach(row => {
-                const isActive = (row[activeKey] || '').trim().toUpperCase();
-                if (isActive === 'Y' || isActive === 'YES') {
-                    const id = (row[idKey] || '').trim();
-                    const shortName = (row[shortNameKey] || '').trim();
-                    const fullName = (row[fullNameKey] || '').trim();
-
-                    if (id) {
-                        staffMap.set(id, shortName || fullName); // Use short name if avail
-                        activeStaffIds.add(id);
-                        if (fullName) nameToIdMap.set(fullName.toLowerCase(), id);
-                        if (shortName) nameToIdMap.set(shortName.toLowerCase(), id); // Also map short name for safety
-                        count++;
-                    }
-                }
-            });
-
-            document.getElementById('statusMsg').innerText = `已載入 ${count} 位在職員工。`;
-            if (currentMonthKey) renderTable(currentMonthKey); // Refresh if needed
-        }
-
-        function processAttendanceData(data) {
-            attendanceData = {};
-
-            const firstRow = data[0];
-            const keys = Object.keys(firstRow);
-            
-            let staffKey = keys.find(k => k.toLowerCase().includes('staff') || k.toLowerCase().includes('no.'));
-            let dateKey = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('time'));
-
-            if (!staffKey || !dateKey) {
-                if(keys.length >= 2) {
-                    staffKey = keys[0];
-                    dateKey = keys[1];
-                } else {
-                    alert("無法識別 CSV 格式。");
-                    return;
-                }
-            }
-
-            data.forEach(row => {
-                const staffId = row[staffKey];
-                const rawDateStr = row[dateKey];
-
-                if (!staffId || !rawDateStr) return;
-
-                // Filter inactive staff immediately if staff list loaded
-                if (activeStaffIds.size > 0 && !activeStaffIds.has(staffId.toString())) {
-                    return; // Skip inactive
-                }
-
-                const cleanDateStr = rawDateStr.replace(/\//g, '-');
-                const dateObj = new Date(cleanDateStr);
-                if (isNaN(dateObj.getTime())) return;
-
-                const year = dateObj.getFullYear();
-                const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-                const day = String(dateObj.getDate()).padStart(2, '0');
-                const hour = String(dateObj.getHours()).padStart(2, '0');
-                const minute = String(dateObj.getMinutes()).padStart(2, '0');
-                const timeStr = `${hour}:${minute}`;
-
-                const monthKey = `${year}-${month}`;
-                const dateKeyStr = `${year}-${month}-${day}`;
-
-                if (!attendanceData[monthKey]) attendanceData[monthKey] = {};
-                if (!attendanceData[monthKey][dateKeyStr]) attendanceData[monthKey][dateKeyStr] = {};
-                if (!attendanceData[monthKey][dateKeyStr][staffId]) attendanceData[monthKey][dateKeyStr][staffId] = [];
-
-                attendanceData[monthKey][dateKeyStr][staffId].push(timeStr);
-            });
-
-            renderMonthTabs();
-        }
-
-        function processLeaveData(data) {
-            let count = 0;
-            let complexCount = 0;
-            let unknownStaff = new Set();
-            
-            data.forEach(row => {
-                const status = row['Status'] || row['status'];
-                if (status && status.toLowerCase() !== 'approved') return;
-
-                const name = row['Full Name'] || row['Name'];
-                if (!name) return;
-                
-                let staffId = nameToIdMap.get(name.trim().toLowerCase());
-                
-                // Fallback matching if exact full name not found
-                if (!staffId) {
-                    for (let [mapName, mapId] of nameToIdMap) {
-                        if (mapName.includes(name.trim().toLowerCase()) || name.trim().toLowerCase().includes(mapName)) {
-                            staffId = mapId;
-                            break;
-                        }
-                    }
-                }
-                
-                // Validation: Check if staff exists in active list
-                if (!staffId) {
-                    unknownStaff.add(name);
-                    return;
-                }
-
-                const startDateStr = row['Leave Period (Start Date)'];
-                const endDateStr = row['Leave Period (End Date)'];
-                if (!startDateStr || !endDateStr) return;
-
-                const start = parseSmartDate(startDateStr);
-                const end = parseSmartDate(endDateStr);
-
-                if (!start || !end || start > end) return;
-
-                const csvDaysApplied = parseFloat(row['Number of Days Applied']) || 0;
-                const type = row['Leave Type'] || "Leave";
-                const remarks = (row['Remarks'] || "");
-                const isAddComp = type.toLowerCase().includes('add compensatory');
-
-                // Detect Complexity
-                const workingDays = countWorkingDays(start, end);
-                const isComplex = (workingDays > 1 && csvDaysApplied < workingDays) && !isAddComp;
-
-                if (isComplex) complexCount++;
-
-                // Store raw record for stats/list
-                leaveRecords.push({
-                    staffId,
-                    name: staffMap.get(staffId) || name, // Use short name if available
-                    type,
-                    start,
-                    end,
-                    daysApplied: csvDaysApplied,
-                    remarks,
-                    isAddComp,
-                    isComplex
-                });
-
-                if (isComplex) {
-                    const d = new Date(start);
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, '0');
-                    const day = String(d.getDate()).padStart(2, '0');
-                    const dateKey = `${y}-${m}-${day}`;
-                    
-                    if (!leaveData[dateKey]) leaveData[dateKey] = {};
-                    if (!leaveData[dateKey][staffId]) leaveData[dateKey][staffId] = [];
-                    
-                    leaveData[dateKey][staffId].push({
-                        type: type,
-                        duration: csvDaysApplied, 
-                        dayValue: csvDaysApplied, 
-                        session: 'Complex',
-                        isComplex: true,
-                        remarks: remarks
-                    });
-                } else {
-                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                        const year = d.getFullYear();
-                        const month = String(d.getMonth() + 1).padStart(2, '0');
-                        const dayStr = String(d.getDate()).padStart(2, '0');
-                        const dateKey = `${year}-${month}-${dayStr}`;
-                        
-                        const dayOfWeek = d.getDay();
-                        const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-                        const isHoliday = holidayMap.has(dateKey);
-
-                        if ((isWeekend || isHoliday) && !isAddComp) continue;
-
-                        let val = 1;
-                        if (start.getTime() === end.getTime()) {
-                             val = csvDaysApplied || 1; 
-                        }
-
-                        if (!leaveData[dateKey]) leaveData[dateKey] = {};
-                        if (!leaveData[dateKey][staffId]) leaveData[dateKey][staffId] = [];
-
-                        const exists = leaveData[dateKey][staffId].some(l => l.type === type && l.duration === val);
-                        if (!exists) {
-                            leaveData[dateKey][staffId].push({
-                                type: type,
-                                duration: val, 
-                                dayValue: val, 
-                                session: remarks.includes('am') ? 'AM' : (remarks.includes('pm') ? 'PM' : 'Full'),
-                                isComplex: false
-                            });
-                        }
-                    }
-                }
-                count++;
-            });
-
-            // Report results
-            let msg = `成功導入請假記錄。\n總記錄: ${count}\n發現複雜/不規則請假: ${complexCount} 筆`;
-            if (unknownStaff.size > 0) {
-                msg += `\n\n⚠ 警告: 以下人員在「員工名單」中找不到 (或非 Active):\n${Array.from(unknownStaff).join(', ')}`;
-            }
-            alert(msg);
-            
-            if (currentMonthKey) renderTable(currentMonthKey);
-        }
-
-        // --- 5. Rendering ---
-
-        function renderMonthTabs() {
-            const tabsContainer = document.getElementById('monthTabs');
-            tabsContainer.innerHTML = '';
-            
-            const months = Object.keys(attendanceData).sort().reverse();
-
-            if (months.length === 0) {
-                tabsContainer.innerHTML = '<div class="text-gray-400 text-sm p-2">未找到有效數據</div>';
-                return;
-            }
-
-            months.forEach((m, index) => {
-                const div = document.createElement('div');
-                div.className = `cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${index === 0 ? 'bg-indigo-600 text-white shadow' : 'bg-white text-gray-500 hover:bg-gray-100 border'}`;
-                div.innerText = m;
-                div.onclick = () => switchTab(m, div);
-                tabsContainer.appendChild(div);
-            });
-
-            if (months.length > 0) {
-                switchTab(months[0], tabsContainer.children[0]);
-            }
-        }
-
-        function switchTab(monthKey, activeDiv) {
-            currentMonthKey = monthKey;
-            
-            const tabs = document.getElementById('monthTabs').children;
-            for (let tab of tabs) {
-                tab.className = 'cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap bg-white text-gray-500 hover:bg-gray-100 border';
-            }
-            activeDiv.className = 'cursor-pointer px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap bg-indigo-600 text-white shadow';
-
-            renderTable(monthKey);
-        }
-
-        function renderTable(monthKey) {
-            const table = document.getElementById('resultTable');
-            const thead = table.querySelector('thead tr');
-            const tbody = table.querySelector('tbody');
-            const emptyState = document.getElementById('emptyState');
-            const actionButtons = document.getElementById('actionButtons');
-
-            emptyState.classList.add('hidden');
-            table.classList.remove('hidden');
-            actionButtons.classList.remove('hidden');
-
-            tbody.innerHTML = '';
-            thead.innerHTML = '';
-
-            const dataInMonth = attendanceData[monthKey];
-            
-            // Use activeStaffIds if available, otherwise fallback to map keys
-            let staffIdsArray = [];
-            if (activeStaffIds.size > 0) {
-                staffIdsArray = Array.from(activeStaffIds);
-            } else {
-                staffIdsArray = Array.from(staffMap.keys());
-            }
-            
-            let sortedStaffIds = staffIdsArray.sort((a, b) => {
-                return parseInt(a) - parseInt(b) || a.localeCompare(b);
-            });
-
-            const thDate = document.createElement('th');
-            thDate.className = "px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider sticky left-0 bg-gray-100 z-30 border-r border-b min-w-[140px]";
-            thDate.innerText = "日期";
-            thead.appendChild(thDate);
-
-            sortedStaffIds.forEach(sid => {
-                const name = staffMap.get(sid) || `Staff ${sid}`;
-                const th = document.createElement('th');
-                th.className = "px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 border-b min-w-[90px] border-r border-gray-100 staff-header";
-                th.onclick = () => showStaffDetail(sid, name);
-                th.title = "點擊查看該員工請假記錄";
-                // Show Short Name from Map
-                th.innerHTML = `<div class="font-bold truncate w-24 mx-auto">${name.split(',')[0]}</div><div class="text-[10px] text-gray-400">#${sid}</div>`;
-                thead.appendChild(th);
-            });
-
-            const year = parseInt(monthKey.split('-')[0]);
-            const month = parseInt(monthKey.split('-')[1]);
-            const daysInMonth = new Date(year, month, 0).getDate();
-
-            for(let d = 1; d <= daysInMonth; d++) {
-                const dayStr = String(d).padStart(2, '0');
-                const dateKeyStr = `${monthKey}-${dayStr}`;
-                
-                const tr = document.createElement('tr');
-                
-                const dateObj = new Date(dateKeyStr);
-                const dayName = dateObj.toLocaleDateString('zh-HK', { weekday: 'short' });
-                const isSun = dateObj.getDay() === 0;
-                const isSat = dateObj.getDay() === 6;
-                const holidayName = holidayMap.get(dateKeyStr);
-
-                let bgClass = "bg-white";
-                if (holidayName) {
-                    // Check if it's PM holiday
-                    if (holidayName.includes('(PM)')) {
-                        bgClass = "is-holiday-pm";
-                    } else {
-                        bgClass = "is-holiday";
-                    }
-                }
-                else if (isSun || isSat) bgClass = "is-weekend";
-                
-                tr.className = bgClass + " hover:bg-gray-50 transition-colors";
-
-                const tdDate = document.createElement('td');
-                tdDate.className = `px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 z-20 border-r border-b ${bgClass}`;
-                
-                let holidayLabelClass = "holiday-label";
-                if(holidayName && holidayName.includes('(PM)')) holidayLabelClass = "holiday-label-pm";
-
-                tdDate.innerHTML = `
-                    <div>${dateKeyStr} <span class="text-xs text-gray-500">(${dayName})</span></div>
-                    ${holidayName ? `<span class="${holidayLabelClass}">${holidayName}</span>` : ''}
-                `;
-                tr.appendChild(tdDate);
-
-                sortedStaffIds.forEach(sid => {
-                    const td = document.createElement('td');
-                    td.className = "px-2 py-2 whitespace-nowrap text-center text-sm border-r border-b border-gray-100 align-top";
-                    
-                    let content = "";
-                    let hasContent = false;
-
-                    // 1. Check Leave
-                    const leaves = leaveData[dateKeyStr] ? leaveData[dateKeyStr][sid] : null;
-                    if (leaves) {
-                        leaves.forEach(l => {
-                            if (l.isComplex) {
-                                content += `<span class="leave-badge leave-Warning" title="Remark: ${l.remarks || 'Check details'}">⚠ ${l.type} (${l.duration}d)</span>`;
-                            } else {
-                                let badgeClass = "leave-Other";
-                                const t = l.type.toLowerCase();
-                                if (t.includes('annual')) badgeClass = "leave-AL";
-                                else if (t.includes('sick')) badgeClass = "leave-SL";
-                                else if (t.includes('compensatory')) badgeClass = "leave-CL";
-                                content += `<span class="leave-badge ${badgeClass}">${l.type} (${l.dayValue})</span>`;
-                            }
-                            hasContent = true;
-                        });
-                    }
-
-                    // 2. Check Attendance
-                    const dayData = attendanceData[monthKey][dateKeyStr];
-                    const times = dayData ? dayData[sid] : null;
-                    
-                    if (times && times.length > 0) {
-                        times.sort();
-                        const first = times[0];
-                        const last = times[times.length - 1];
-                        
-                        const isOvertime = (holidayName || isSun || isSat);
-                        const otClass = isOvertime ? "border-orange-300 bg-orange-50 text-orange-800" : "";
-
-                        if (first === last) {
-                            content += `<div class="mt-1"><span class="time-badge ${otClass}">${first}</span></div>`;
-                        } else {
-                            content += `<div class="mt-1 flex flex-col gap-1 items-center">
-                                <span class="time-badge ${otClass}">${first} - ${last}</span>
-                            </div>`;
-                        }
-                        hasContent = true;
-                    }
-
-                    if (!hasContent) {
-                        td.innerHTML = `<span class="text-gray-300 text-xs">-</span>`;
-                    } else {
-                        td.innerHTML = content;
-                    }
-                    
-                    tr.appendChild(td);
-                });
-
-                tbody.appendChild(tr);
-            }
-        }
-
-        // --- 6. Statistics & Modals ---
-        
-        // New function for individual staff click
-        function showStaffDetail(sid, name) {
-            if (!currentMonthKey) return;
-            
-            document.getElementById('staffDetailTitle').innerText = `${name} (${currentMonthKey}) 請假詳情`;
-            const tbody = document.getElementById('staffLeaveTable').querySelector('tbody');
-            tbody.innerHTML = '';
-            
-            // Setup Export Button
-            const btn = document.getElementById('btnExportWord');
-            btn.onclick = () => exportStaffWord(sid, name, currentMonthKey);
-
-            const [y, m] = currentMonthKey.split('-');
-            const monthStart = new Date(parseInt(y), parseInt(m) - 1, 1);
-            const monthEnd = new Date(parseInt(y), parseInt(m), 0);
-            
-            // Filter records for this staff in this month
-            const relevantRecords = leaveRecords.filter(r => {
-                return (r.staffId == sid) && (r.start <= monthEnd && r.end >= monthStart);
-            });
-            
-            if (relevantRecords.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-4 text-center text-gray-400">本月無請假記錄</td></tr>';
-            } else {
-                relevantRecords.sort((a,b) => a.start - b.start);
-                relevantRecords.forEach(r => {
-                    const tr = document.createElement('tr');
-                    tr.className = "hover:bg-gray-50 border-b";
-                    
-                    const d1 = r.start.toLocaleDateString();
-                    const d2 = r.end.toLocaleDateString();
-                    const dateStr = (d1 === d2) ? d1 : `${d1} - ${d2}`;
-                    
-                    tr.innerHTML = `
-                        <td class="px-4 py-2">${dateStr}</td>
-                        <td class="px-4 py-2"><span class="px-2 py-0.5 rounded text-xs bg-gray-100 border">${r.type}</span></td>
-                        <td class="px-4 py-2 text-center">${r.daysApplied}</td>
-                        <td class="px-4 py-2 text-xs text-gray-500">${r.remarks}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            }
-            
-            document.body.classList.add('modal-active');
-            document.getElementById('staffDetailModal').classList.remove('opacity-0', 'pointer-events-none');
-        }
-
-        // Stats Logic
-        function showStatsModal() {
-            if (!currentMonthKey) return;
-            
-            // Populate Month Select
-            const mSelect = document.getElementById('statsMonthSelect');
-            mSelect.innerHTML = '';
-            const months = Object.keys(attendanceData).sort().reverse();
-            months.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m;
-                opt.innerText = m;
-                if(m === currentMonthKey) opt.selected = true;
-                mSelect.appendChild(opt);
-            });
-
-            // Populate Quarter Select
-            // Derive years from data
-            const qSelect = document.getElementById('statsQuarterSelect');
-            qSelect.innerHTML = '';
-            let years = new Set();
-            months.forEach(m => years.add(m.split('-')[0]));
-            let sortedYears = Array.from(years).sort().reverse();
-            
-            sortedYears.forEach(y => {
-                for(let i=4; i>=1; i--) {
-                    const opt = document.createElement('option');
-                    opt.value = `${y}-Q${i}`;
-                    opt.innerText = `${y} Q${i}`;
-                    qSelect.appendChild(opt);
-                }
-            });
-            // Auto select current quarter
-            const [curY, curM] = currentMonthKey.split('-');
-            const q = Math.ceil(parseInt(curM)/3);
-            qSelect.value = `${curY}-Q${q}`;
-
-            switchStatsTab('monthly'); // Reset to monthly on open
-            renderMonthlyStats(currentMonthKey);
-            document.body.classList.add('modal-active');
-            document.getElementById('statsModal').classList.remove('opacity-0', 'pointer-events-none');
-        }
-
-        function switchStatsTab(tab) {
-            currentView = tab;
-            const btnMonthly = document.getElementById('tabMonthly');
-            const btnQuarterly = document.getElementById('tabQuarterly');
-            const viewMonthly = document.getElementById('viewMonthly');
-            const viewQuarterly = document.getElementById('viewQuarterly');
-
-            if (tab === 'monthly') {
-                btnMonthly.className = "py-2 px-4 text-sm font-medium tab-active";
-                btnQuarterly.className = "py-2 px-4 text-sm font-medium tab-inactive";
-                viewMonthly.classList.remove('hidden');
-                viewQuarterly.classList.add('hidden');
-                // Trigger render with currently selected value
-                renderMonthlyStats(document.getElementById('statsMonthSelect').value || currentMonthKey);
-            } else {
-                btnMonthly.className = "py-2 px-4 text-sm font-medium tab-inactive";
-                btnQuarterly.className = "py-2 px-4 text-sm font-medium tab-active";
-                viewMonthly.classList.add('hidden');
-                viewQuarterly.classList.remove('hidden');
-                renderQuarterlyStats(document.getElementById('statsQuarterSelect').value);
-            }
-        }
-
-        function renderMonthlyStats(targetMonthKey) {
-            if (!targetMonthKey) return;
-            const [y, m] = targetMonthKey.split('-');
-            document.getElementById('statsTitle').innerText = `${targetMonthKey} 月度報告`;
-
-            // Attention logic
-            const attentionSection = document.getElementById('attentionSection');
-            const attentionList = document.getElementById('attentionList');
-            attentionList.innerHTML = '';
-            
-            const monthStart = new Date(parseInt(y), parseInt(m) - 1, 1);
-            const monthEnd = new Date(parseInt(y), parseInt(m), 0);
-            const monthLeaveRecords = leaveRecords.filter(r => (r.start <= monthEnd && r.end >= monthStart));
-            const specialRecords = monthLeaveRecords.filter(r => r.isComplex || r.isAddComp);
-
-            if (specialRecords.length > 0) {
-                specialRecords.forEach(r => {
-                    const li = document.createElement('li');
-                    const dateStr = (r.start.getTime() === r.end.getTime()) ? r.start.toLocaleDateString() : `${r.start.toLocaleDateString()} - ${r.end.toLocaleDateString()}`;
-                    if (r.isComplex) {
-                        li.innerHTML = `<strong>${r.name}</strong>: 複雜請假 (申請 ${r.daysApplied} 天，範圍 ${dateStr})。請核對備註: "${r.remarks}"`;
-                    } else if (r.isAddComp) {
-                        li.innerHTML = `<span class="text-blue-700 font-bold">補假賺取</span> - <strong>${r.name}</strong>: ${dateStr} (申請 +${r.daysApplied} 天)`;
-                    }
-                    attentionList.appendChild(li);
-                });
-                attentionSection.classList.remove('hidden');
-            } else {
-                attentionSection.classList.add('hidden');
-            }
-
-            // Render Tables
-            const tbodyStats = document.getElementById('statsTable').querySelector('tbody');
-            tbodyStats.innerHTML = '';
-            
-            // Filter by Active Staff if loaded
-            let staffIdsArray = activeStaffIds.size > 0 ? Array.from(activeStaffIds) : Array.from(staffMap.keys());
-            let sortedStaffIds = staffIdsArray.sort((a, b) => parseInt(a) - parseInt(b));
-
-            sortedStaffIds.forEach(sid => {
-                let workDays = 0;
-                let workHours = 0;
-                let missingPunch = 0;
-                let annualLeave = 0;
-                let sickLeave = 0;
-                let otherLeave = 0;
-
-                const daysInM = new Date(y, m, 0).getDate();
-                for (let d = 1; d <= daysInM; d++) {
-                    const dayStr = String(d).padStart(2, '0');
-                    const dateKey = `${targetMonthKey}-${dayStr}`;
-                    if (attendanceData[targetMonthKey] && attendanceData[targetMonthKey][dateKey] && attendanceData[targetMonthKey][dateKey][sid]) {
-                        const times = attendanceData[targetMonthKey][dateKey][sid];
-                        if (times.length > 0) {
-                            workDays++;
-                            if (times[0] === times[times.length-1]) missingPunch++;
-                            times.sort();
-                            const t1 = times[0].split(':');
-                            const t2 = times[times.length-1].split(':');
-                            const min1 = parseInt(t1[0])*60 + parseInt(t1[1]);
-                            const min2 = parseInt(t2[0])*60 + parseInt(t2[1]);
-                            if (min2 > min1) workHours += (min2 - min1) / 60;
-                        }
-                    }
-                }
-
-                const staffLeaves = monthLeaveRecords.filter(r => r.staffId == sid);
-                staffLeaves.forEach(r => {
-                    if (!r.isAddComp) {
-                        const type = r.type.toLowerCase();
-                        if (type.includes('annual')) annualLeave += r.daysApplied;
-                        else if (type.includes('sick')) sickLeave += r.daysApplied;
-                        else otherLeave += r.daysApplied;
-                    }
-                });
-
-                if (workDays === 0 && annualLeave === 0 && sickLeave === 0 && otherLeave === 0 && missingPunch === 0) return;
-
-                const tr = document.createElement('tr');
-                const missingPunchClass = missingPunch > 0 ? "text-orange-600 font-bold bg-orange-50" : "text-gray-400";
-                tr.innerHTML = `
-                    <td class="px-4 py-2 border-b text-gray-600">#${sid}</td>
-                    <td class="px-4 py-2 border-b font-medium">${staffMap.get(sid) || ''}</td>
-                    <td class="px-4 py-2 border-b text-center">${workDays}</td>
-                    <td class="px-4 py-2 border-b text-center text-blue-600 font-bold">${workHours.toFixed(1)}</td>
-                    <td class="px-4 py-2 border-b text-center border-l border-r border-orange-100 ${missingPunchClass}">${missingPunch > 0 ? missingPunch : '-'}</td>
-                    <td class="px-4 py-2 border-b text-center text-purple-600 font-semibold">${annualLeave}</td>
-                    <td class="px-4 py-2 border-b text-center text-red-600 font-semibold">${sickLeave}</td>
-                    <td class="px-4 py-2 border-b text-center text-gray-500">${otherLeave}</td>
-                `;
-                tbodyStats.appendChild(tr);
-            });
-
-            // Leave List
-            const tbodyLeave = document.getElementById('statsLeaveTable').querySelector('tbody');
-            tbodyLeave.innerHTML = '';
-            if (monthLeaveRecords.length === 0) {
-                tbodyLeave.innerHTML = '<tr><td colspan="6" class="px-4 py-4 text-center text-gray-400">本月無請假記錄</td></tr>';
-            } else {
-                monthLeaveRecords.sort((a,b) => a.start - b.start);
-                monthLeaveRecords.forEach(r => {
-                    const tr = document.createElement('tr');
-                    let rowClass = "hover:bg-gray-50 border-b";
-                    if (r.isComplex) rowClass += " bg-yellow-50";
-                    tr.className = rowClass;
-                    let typeDisplay = `<span class="px-2 py-0.5 rounded text-xs bg-gray-100 border">${r.type}</span>`;
-                    if (r.isAddComp) typeDisplay = `<span class="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700 border border-blue-200 font-bold">${r.type}</span>`;
-                    if (r.isComplex) typeDisplay = `<span class="px-2 py-0.5 rounded text-xs bg-yellow-100 text-yellow-800 border border-yellow-200 font-bold">⚠ ${r.type}</span>`;
-                    tr.innerHTML = `
-                        <td class="px-4 py-2">${r.start.toLocaleDateString()} - ${r.end.toLocaleDateString()}</td>
-                        <td class="px-4 py-2 font-medium">${r.name}</td>
-                        <td class="px-4 py-2">${typeDisplay}</td>
-                        <td class="px-4 py-2 text-center font-bold">${r.daysApplied}</td>
-                        <td class="px-4 py-2 text-xs text-gray-500">${r.remarks}</td>
-                    `;
-                    tbodyLeave.appendChild(tr);
-                });
-            }
-        }
-
-        function renderQuarterlyStats(quarterKey) {
-            if(!quarterKey) return;
-            // Quarter Key format: "2025-Q2"
-            const [yearStr, qStr] = quarterKey.split('-');
-            const year = parseInt(yearStr);
-            const qNum = parseInt(qStr.replace('Q', ''));
-            
-            let qStartMonth = (qNum - 1) * 3 + 1;
-            let qEndMonth = qStartMonth + 2;
-            let qLabel = `${year}年 Q${qNum} (${qStartMonth}月-${qEndMonth}月)`;
-
-            document.getElementById('quarterTitle').innerText = `${qLabel} 季度統計報告`;
-
-            // Prepare Months in Quarter
-            const targetMonths = [];
-            for (let m = qStartMonth; m <= qEndMonth; m++) {
-                targetMonths.push(`${year}-${String(m).padStart(2, '0')}`);
-            }
-
-            const tbody = document.getElementById('quarterTable').querySelector('tbody');
-            tbody.innerHTML = '';
-
-            let staffIdsArray = activeStaffIds.size > 0 ? Array.from(activeStaffIds) : Array.from(staffMap.keys());
-            let sortedStaffIds = staffIdsArray.sort((a, b) => parseInt(a) - parseInt(b));
-
-            sortedStaffIds.forEach(sid => {
-                let totalWorkDays = 0;
-                let totalWorkHours = 0;
-                let totalAL = 0;
-                let totalSL = 0;
-                let totalOther = 0;
-
-                // Loop Months
-                targetMonths.forEach(mKey => {
-                    // 1. Attendance
-                    if (attendanceData[mKey]) {
-                        const mPart = parseInt(mKey.split('-')[1]);
-                        const daysInM = new Date(year, mPart, 0).getDate();
-                        for (let d = 1; d <= daysInM; d++) {
-                            const dateKey = `${mKey}-${String(d).padStart(2, '0')}`;
-                            if (attendanceData[mKey][dateKey] && attendanceData[mKey][dateKey][sid]) {
-                                const times = attendanceData[mKey][dateKey][sid];
-                                if (times.length > 0) {
-                                    totalWorkDays++;
-                                    times.sort();
-                                    const t1 = times[0].split(':');
-                                    const t2 = times[times.length-1].split(':');
-                                    const min1 = parseInt(t1[0])*60 + parseInt(t1[1]);
-                                    const min2 = parseInt(t2[0])*60 + parseInt(t2[1]);
-                                    if (min2 > min1) totalWorkHours += (min2 - min1) / 60;
-                                }
-                            }
-                        }
-                    }
-                });
-
-                // 2. Leave (Filter records in quarter range)
-                const qStart = new Date(year, qStartMonth - 1, 1);
-                const qEnd = new Date(year, qEndMonth, 0); // Day 0 gives last day of prev month? No, new Date(y, m, 0)
-                // Fix Date End: month index in JS is 0-11. 
-                // qEndMonth is 1-12 based. 
-                // new Date(year, qEndMonth, 0) gives last day of qEndMonth. Correct.
-                const qEndDateObj = new Date(year, qEndMonth, 0);
-                
-                const qLeaveRecords = leaveRecords.filter(r => (r.staffId == sid && r.start <= qEndDateObj && r.end >= qStart));
-                
-                qLeaveRecords.forEach(r => {
-                    if (!r.isAddComp) {
-                        const type = r.type.toLowerCase();
-                        if (type.includes('annual')) totalAL += r.daysApplied;
-                        else if (type.includes('sick')) totalSL += r.daysApplied;
-                        else totalOther += r.daysApplied;
-                    }
-                });
-
-                if (totalWorkDays === 0 && totalAL === 0 && totalSL === 0 && totalOther === 0) return;
-
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="px-4 py-2 border-b text-gray-600">#${sid}</td>
-                    <td class="px-4 py-2 border-b font-medium">${staffMap.get(sid) || ''}</td>
-                    <td class="px-4 py-2 border-b text-center">${totalWorkDays}</td>
-                    <td class="px-4 py-2 border-b text-center text-teal-600 font-bold">${totalWorkHours.toFixed(1)}</td>
-                    <td class="px-4 py-2 border-b text-center text-purple-600 font-semibold">${totalAL}</td>
-                    <td class="px-4 py-2 border-b text-center text-red-600 font-semibold">${totalSL}</td>
-                    <td class="px-4 py-2 border-b text-center text-gray-500">${totalOther}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        // --- Export Functions ---
-
-        function exportStats() {
-            const wb = XLSX.utils.book_new();
-            
-            if (currentView === 'monthly') {
-                const selectedMonth = document.getElementById('statsMonthSelect').value;
-                const statsTable = document.getElementById('statsTable');
-                const leaveTable = document.getElementById('statsLeaveTable');
-                const ws1 = XLSX.utils.table_to_sheet(statsTable);
-                XLSX.utils.book_append_sheet(wb, ws1, "Monthly_Stats");
-                const ws2 = XLSX.utils.table_to_sheet(leaveTable);
-                XLSX.utils.book_append_sheet(wb, ws2, "Monthly_Leave_List");
-                XLSX.writeFile(wb, `Report_Monthly_${selectedMonth}.xlsx`);
-            } else {
-                const selectedQuarter = document.getElementById('statsQuarterSelect').value;
-                const qTable = document.getElementById('quarterTable');
-                const ws = XLSX.utils.table_to_sheet(qTable);
-                XLSX.utils.book_append_sheet(wb, ws, "Quarterly_Stats");
-                XLSX.writeFile(wb, `Report_Quarterly_${selectedQuarter}.xlsx`);
-            }
-        }
-
-        function exportCurrentTable() {
-            if (!currentMonthKey) return;
-            const table = document.getElementById('resultTable');
-            const wb = XLSX.utils.table_to_book(table, {sheet: currentMonthKey});
-            XLSX.writeFile(wb, `Attendance_Detail_${currentMonthKey}.xlsx`);
-        }
-
-        function generateStaffHTML(sid, name, monthKey) {
-            const [y, m] = monthKey.split('-');
-            const daysInM = new Date(y, m, 0).getDate();
-            let tableRows = '';
-            for (let d = 1; d <= daysInM; d++) {
-                const dayStr = String(d).padStart(2, '0');
-                const dateKey = `${monthKey}-${dayStr}`;
-                const dateObj = new Date(dateKey);
-                const dayName = dateObj.toLocaleDateString('zh-HK', { weekday: 'short' });
-                
-                let timeStr = "";
-                if (attendanceData[monthKey] && attendanceData[monthKey][dateKey] && attendanceData[monthKey][dateKey][sid]) {
-                    const times = attendanceData[monthKey][dateKey][sid];
-                    times.sort();
-                    timeStr = times.join(" - ");
-                }
-
-                let leaveStr = "";
-                if (leaveData[dateKey] && leaveData[dateKey][sid]) {
-                    leaveData[dateKey][sid].forEach(l => {
-                        leaveStr += `${l.type} (${l.dayValue}) `;
-                        if(l.isComplex) leaveStr += "[備註: " + l.remarks + "]";
-                    });
-                }
-                
-                const isSun = dateObj.getDay() === 0;
-                const isSat = dateObj.getDay() === 6;
-                const holidayName = holidayMap.get(dateKey);
-                let bgStyle = "";
-                
-                if (holidayName) { 
-                    if (holidayName.includes('(PM)')) {
-                        bgStyle = "background-color: #fef08a;"; // Yellow
-                        leaveStr = holidayName; 
-                    } else {
-                        bgStyle = "background-color: #fecaca;"; // Red
-                        leaveStr = holidayName; 
-                    }
-                } 
-                else if (isSun || isSat) { bgStyle = "background-color: #fff7ed;"; }
-
-                tableRows += `
-                    <tr style="${bgStyle}">
-                        <td style="border:1px solid #000; padding:5px;">${dateKey} (${dayName})</td>
-                        <td style="border:1px solid #000; padding:5px; text-align:center;">${timeStr}</td>
-                        <td style="border:1px solid #000; padding:5px;">${leaveStr}</td>
-                        <td style="border:1px solid #000; padding:5px;"></td>
-                    </tr>
-                `;
-            }
-
-            return `
-                <div style="font-family: 'Times New Roman', serif; margin: 20px; page-break-after: always;">
-                    <h2 style="text-align:center;">員工考勤及休假確認表</h2>
-                    <p><strong>月份：</strong> ${monthKey} &nbsp;&nbsp;&nbsp; <strong>姓名：</strong> ${name} (ID: ${sid})</p>
-                    <table style="width:100%; border-collapse: collapse; border: 1px solid black; font-size:12px;">
-                        <thead>
-                            <tr style="background-color: #eee;">
-                                <th style="border:1px solid #000; padding:5px; width: 30%;">日期</th>
-                                <th style="border:1px solid #000; padding:5px; width: 25%;">打卡時間</th>
-                                <th style="border:1px solid #000; padding:5px; width: 30%;">假期/備註</th>
-                                <th style="border:1px solid #000; padding:5px; width: 15%;">員工確認 (✓)</th>
-                            </tr>
-                        </thead>
-                        <tbody>${tableRows}</tbody>
-                    </table>
-                    <br><br>
-                    <div style="margin-top: 20px;">
-                        <p>員工簽署：__________________________ &nbsp;&nbsp;&nbsp;&nbsp; 日期：__________________</p>
-                    </div>
-                </div>
-            `;
-        }
-
-        function exportStaffWord(sid, name, monthKey) {
-            const htmlBody = generateStaffHTML(sid, name, monthKey);
-            const htmlContent = `
-                <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-                <head><meta charset='utf-8'><title>${name} Report</title></head>
-                <body>${htmlBody}</body></html>
-            `;
-            const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `Attendance_Report_${name}_${monthKey}.doc`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        function exportAllStaffWord() {
-            if (!currentMonthKey) return;
-            
-            let staffIdsArray = activeStaffIds.size > 0 ? Array.from(activeStaffIds) : Array.from(staffMap.keys());
-            let sortedStaffIds = staffIdsArray.sort((a, b) => parseInt(a) - parseInt(b));
-            let fullHtml = "";
-
-            sortedStaffIds.forEach(sid => {
-                const name = staffMap.get(sid);
-                // Check if staff has any data this month
-                let hasData = false;
-                // Simple check: attendance or leave?
-                const [y, m] = currentMonthKey.split('-');
-                const monthStart = new Date(parseInt(y), parseInt(m)-1, 1);
-                const monthEnd = new Date(parseInt(y), parseInt(m), 0);
-                
-                // Check attendance presence
-                const daysInM = new Date(y, m, 0).getDate();
-                for (let d = 1; d <= daysInM; d++) {
-                    const dateKey = `${currentMonthKey}-${String(d).padStart(2,'0')}`;
-                    if(attendanceData[currentMonthKey] && attendanceData[currentMonthKey][dateKey] && attendanceData[currentMonthKey][dateKey][sid]) {
-                        hasData = true; break;
-                    }
-                }
-                // Check leave presence
-                if(!hasData) {
-                    const hasLeave = leaveRecords.some(r => r.staffId == sid && r.start <= monthEnd && r.end >= monthStart);
-                    if(hasLeave) hasData = true;
-                }
-
-                if(hasData) {
-                    fullHtml += generateStaffHTML(sid, name, currentMonthKey) + "<br style='page-break-before: always;'>";
-                }
-            });
-
-            if (!fullHtml) { alert("本月無數據可導出"); return; }
-
-            const finalHtml = `
-                <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-                <head><meta charset='utf-8'><title>All Staff Report</title></head>
-                <body>${fullHtml}</body></html>
-            `;
-            
-            const blob = new Blob(['\ufeff', finalHtml], { type: 'application/msword' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `All_Staff_Attendance_${currentMonthKey}.doc`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        // --- Template Generation Functions ---
-
-        function downloadStaffTemplate() {
-            const csvContent = "Staff No.,Name,Full Name,Active\n1,Kelvin,Chun Yat Hong Kelvin,Y\n3,Kelly,Yip Sze Wing Kelly,Y\n99,ExEmployee,Chan Tai Man,N";
-            downloadCSV(csvContent, "Staff_List_Template.csv");
-        }
-
-        function downloadAttendanceTemplate() {
-            const csvContent = "staff no.,date\n1,2025-06-01 08:55:00\n1,2025-06-01 18:05:00\n3,2025-06-01 09:00:00\n3,2025-06-01 18:00:00";
-            downloadCSV(csvContent, "Attendance_Template.csv");
-        }
-
-        function downloadLeaveTemplate() {
-            // Note: Header names must match parser expectations
-            const csvContent = "Full Name,Leave Type,Leave Period (Start Date),Leave Period (End Date),Number of Days Applied,Status,Remarks\nChun Yat Hong Kelvin,Annual Leave,10/6/2025,12/6/2025,3,Approved,\nYip Sze Wing Kelly,Sick Leave,15/6/2025,15/6/2025,1,Approved,See doctor";
-            downloadCSV(csvContent, "Leave_Record_Template.csv");
-        }
-
-        function downloadCSV(content, filename) {
-            const blob = new Blob(["\ufeff" + content], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            if (link.download !== undefined) {
-                const url = URL.createObjectURL(blob);
-                link.setAttribute("href", url);
-                link.setAttribute("download", filename);
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            }
-        }
-
-        // --- Transfer Logic ---
-
-        function generateTransferCode() {
-            if (!rawFiles.staff && !rawFiles.attendance && !rawFiles.leave) {
-                alert("沒有足夠的數據可供匯出。請先上傳檔案。");
-                return;
-            }
-
-            const dataObj = {
-                staff: rawFiles.staff || "",
-                attendance: rawFiles.attendance || "",
-                leave: rawFiles.leave || "",
-                timestamp: new Date().toISOString()
             };
 
-            const jsonString = JSON.stringify(dataObj);
-            const password = document.getElementById('exportPassword').value;
+            setT('subject', 'subject'); setT('grade', 'grade'); 
+            setT('topic', 'topic'); 
+            setT('tools', 'tools');
+            
+            setT('objectives', 'objectives'); setH('resources', 'resources');
+            setT('priorKnowledge', 'priorKnowledge'); setT('duration', 'duration');
+            setT('assessment', 'assessment');
 
-            // Compress first
-            const compressed = LZString.compressToBase64(jsonString);
-
-            let finalString = "";
-            if (password) {
-                // Encrypt
-                const encrypted = CryptoJS.AES.encrypt(compressed, password).toString();
-                finalString = "ENC::" + encrypted;
-            } else {
-                // Just use compressed string with prefix
-                finalString = "COMP::" + compressed;
-            }
-
-            // Check size limit (WhatsApp limit ~65536)
-            if (finalString.length > 60000) {
-                document.getElementById('textModeSection').classList.add('hidden');
-                document.getElementById('fileModeSection').classList.remove('hidden');
-            } else {
-                document.getElementById('textModeSection').classList.remove('hidden');
-                document.getElementById('fileModeSection').classList.add('hidden');
-                document.getElementById('transferCodeOutput').value = finalString;
+            if (data.flow && data.flow.length > 0) {
+                const tbl = document.getElementById('flowTable');
+                while(tbl.rows.length > 1) tbl.deleteRow(1);
+                data.flow.forEach(f => addNewRow(f.time, f.title, f.content, f.note));
             }
             
-            document.getElementById('exportResult').classList.remove('hidden');
-        }
-
-        function downloadTransferFile() {
-            // Generate the file content again or grab from memory
-            // We need to re-generate because generateTransferCode only updated UI state
-            if (!rawFiles.staff && !rawFiles.attendance && !rawFiles.leave) return;
-
-            const dataObj = {
-                staff: rawFiles.staff || "",
-                attendance: rawFiles.attendance || "",
-                leave: rawFiles.leave || "",
-                timestamp: new Date().toISOString()
-            };
-            const jsonString = JSON.stringify(dataObj);
-            const password = document.getElementById('exportPassword').value;
-            const compressed = LZString.compressToBase64(jsonString);
+            document.getElementById('successMsg').style.display = 'block';
+            setTimeout(() => { closeModal(); alert("✅ 匯入成功！"); }, 500);
             
-            let finalString = "";
-            if (password) {
-                const encrypted = CryptoJS.AES.encrypt(compressed, password).toString();
-                finalString = "ENC::" + encrypted;
-            } else {
-                finalString = "COMP::" + compressed;
-            }
-
-            const blob = new Blob([finalString], { type: 'text/plain' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `iClass_Backup_${new Date().toISOString().slice(0,10)}.txt`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+        } catch(e) {
+            const errBox = document.getElementById('errorBox');
+            document.getElementById('errorText').innerText = "❌ 格式錯誤：" + e.message;
+            errBox.style.display = 'block';
         }
+    }
 
-        function copyToClipboard() {
-            const copyText = document.getElementById("transferCodeOutput");
-            
-            // Preferred method
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(copyText.value).then(() => {
-                    alert("代碼已複製！");
-                }).catch(err => {
-                    console.error('Async: Could not copy text: ', err);
-                    fallbackCopyTextToClipboard(copyText);
-                });
-            } else {
-                fallbackCopyTextToClipboard(copyText);
-            }
-        }
-
-        function fallbackCopyTextToClipboard(copyText) {
-            copyText.select();
-            copyText.setSelectionRange(0, 99999999); // Increase limit significantly
-            try {
-                document.execCommand("copy");
-                alert("代碼已複製！");
-            } catch (err) {
-                console.error('Fallback: Oops, unable to copy', err);
-                alert("複製失敗，請手動全選複製 (Ctrl+A, Ctrl+C)");
-            }
-        }
-
-        // Handle file upload for restore
-        document.getElementById('backupFileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                document.getElementById('transferCodeInput').value = e.target.result;
-                // Auto trigger restore? Maybe better to let user click button in case password needed
-                // alert("備份檔已讀取，請輸入密碼（如有）並點擊「還原數據」。");
-            };
-            reader.readAsText(file);
+    function createCell(text, bold = false, fill = null, align = AlignmentType.LEFT) {
+        return new TableCell({
+            children: [new Paragraph({ children: [new TextRun({ text, bold })], alignment: align })],
+            shading: fill ? { fill } : undefined,
+            verticalAlign: VerticalAlign.CENTER
         });
+    }
 
-        function restoreData() {
-            const inputCode = document.getElementById('transferCodeInput').value.trim();
-            const password = document.getElementById('importPassword').value;
-
-            if (!inputCode) {
-                alert("請貼上轉移代碼或上傳備份檔。");
-                return;
-            }
-
-            let compressedString = "";
-
-            try {
-                if (inputCode.startsWith("ENC::")) {
-                    if (!password) {
-                        alert("此代碼已加密，請輸入密碼。");
-                        return;
-                    }
-                    const cipherText = inputCode.substring(5);
-                    const bytes = CryptoJS.AES.decrypt(cipherText, password);
-                    compressedString = bytes.toString(CryptoJS.enc.Utf8);
+    document.getElementById('exportBtn').onclick = async () => {
+        const getT = (id) => document.getElementById(id).innerText;
+        
+        const doc = new Document({
+            sections: [{
+                properties: { page: { size: { orientation: PageOrientation.LANDSCAPE }, margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+                children: [
+                    new Paragraph({ text: (getT('topic') || "教案") + " - 教案", heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
                     
-                    if (!compressedString) {
-                        alert("密碼錯誤或代碼損壞。");
-                        return;
-                    }
-                } else if (inputCode.startsWith("COMP::")) {
-                    compressedString = inputCode.substring(6);
-                } else if (inputCode.startsWith("RAW::")) {
-                     // Backward compatibility for old format
-                    const base64 = inputCode.substring(5);
-                    const jsonString = decodeURIComponent(escape(atob(base64)));
-                    processRestoredJson(jsonString);
-                    return;
-                } else {
-                    alert("無效的代碼格式。");
-                    return;
-                }
-
-                // Decompress
-                let jsonString = LZString.decompressFromBase64(compressedString);
-                if (!jsonString) {
-                     alert("解壓縮失敗：數據可能損壞。");
-                     return;
-                }
-                processRestoredJson(jsonString);
-
-            } catch (e) {
-                console.error(e);
-                alert("還原失敗：解密或解壓縮過程發生錯誤。");
-            }
-        }
-
-        function processRestoredJson(jsonString) {
-            try {
-                const dataObj = JSON.parse(jsonString);
-                // Restore Raw Files
-                rawFiles.staff = dataObj.staff;
-                rawFiles.attendance = dataObj.attendance;
-                rawFiles.leave = dataObj.leave;
-
-                // Reprocess Logic
-                let processedCount = 0;
-
-                if (rawFiles.staff) {
-                    Papa.parse(rawFiles.staff, {
-                        header: true, skipEmptyLines: true,
-                        complete: function(res) { processStaffData(res.data); }
-                    });
-                    document.getElementById('btnRecStaff').classList.remove('opacity-50', 'cursor-not-allowed');
-                    document.getElementById('btnRecStaff').disabled = false;
-                    processedCount++;
-                }
-
-                if (rawFiles.attendance) {
-                    Papa.parse(rawFiles.attendance, {
-                        header: true, skipEmptyLines: true,
-                        complete: function(res) { processAttendanceData(res.data); }
-                    });
-                    document.getElementById('btnRecAtt').classList.remove('opacity-50', 'cursor-not-allowed');
-                    document.getElementById('btnRecAtt').disabled = false;
-                    processedCount++;
-                }
-
-                if (rawFiles.leave) {
-                    leaveData = {}; leaveRecords = [];
-                    Papa.parse(rawFiles.leave, {
-                        header: true, skipEmptyLines: true,
-                        complete: function(res) { processLeaveData(res.data); }
-                    });
-                    document.getElementById('btnRecLeave').classList.remove('opacity-50', 'cursor-not-allowed');
-                    document.getElementById('btnRecLeave').disabled = false;
-                    processedCount++;
-                }
-
-                document.getElementById('recoverySection').classList.remove('hidden');
-                alert(`數據還原成功！共處理了 ${processedCount} 種類型的檔案。`);
-            } catch (e) {
-                console.error("JSON Parse Error:", e);
-                alert("還原失敗：數據格式錯誤。");
-            }
-        }
-
-        function downloadRestoredFile(type) {
-            let content = "";
-            let filename = "";
-
-            if (type === 'staff') {
-                content = rawFiles.staff;
-                filename = "Restored_Staff_List.csv";
-            } else if (type === 'attendance') {
-                content = rawFiles.attendance;
-                filename = "Restored_Attendance_Data.csv";
-            } else if (type === 'leave') {
-                content = rawFiles.leave;
-                filename = "Restored_Leave_Form.csv";
-            }
-
-            if (!content) return;
-            downloadCSV(content, filename);
-        }
-
-    </script>
+                    // Table 1: Info
+                    new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({ children: [ 
+                                createCell("科目", true, "E5E7EB"), createCell(getT('subject')), 
+                                createCell("建議學習年級", true, "E5E7EB"), createCell(getT('grade')) 
+                            ]}),
+                            new TableRow({ children: [ 
+                                createCell("課題", true, "E5E7EB"), createCell(getT('topic')), 
+                                createCell("教學工具", true, "E5E7EB"), createCell(getT('tools')) 
+                            ]})
+                        ]
+                    }),
+                    new Paragraph({ text: "" }),
+                    
+                    // Table 2: Objectives
+                    new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({ children: [ createCell("學習目標", true, "E5E7EB"), createCell("教學資源", true, "E5E7EB") ]}),
+                            new TableRow({ children: [
+                                new TableCell({ children: getT('objectives').split('\n').map(l => new Paragraph({ text: l, spacing: { after: 50 } })) }),
+                                new TableCell({ children: getT('resources').split('\n').map(l => new Paragraph({ text: l, spacing: { after: 50 } })) })
+                            ]}),
+                            new TableRow({ children: [ createCell("學生已有知識", true, "E5E7EB"), new TableCell({ children: [new Paragraph(getT('priorKnowledge'))], columnSpan: 3 }) ]}),
+                            new TableRow({ children: [ createCell("建議課節", true, "E5E7EB"), new TableCell({ children: [new Paragraph(getT('duration'))], columnSpan: 3 }) ]})
+                        ]
+                    }),
+                    
+                    new Paragraph({ text: "第一教節大綱", bold: true, spacing: { before: 200, after: 100 } }),
+                    
+                    // Table 3: Flow
+                    new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({ children: [ 
+                                createCell("時間", true, "E5E7EB", AlignmentType.CENTER), 
+                                createCell("教學流程", true, "E5E7EB"), 
+                                createCell("備註", true, "E5E7EB") 
+                            ]}),
+                            ...Array.from(document.querySelectorAll('.flow-row')).map(row => {
+                                const time = row.querySelector('.row-time').innerText;
+                                const title = row.querySelector('.row-title').innerText;
+                                const content = row.querySelector('.row-content').innerText;
+                                const note = row.querySelector('.row-note').innerText;
+                                if (!time && !title) return null;
+                                
+                                return new TableRow({
+                                    children: [
+                                        new TableCell({ children: [new Paragraph({ text: time, alignment: AlignmentType.CENTER })], verticalAlign: VerticalAlign.CENTER }),
+                                        new TableCell({ children: [
+                                            new Paragraph({ children: [new TextRun({ text: title, bold: true })] }),
+                                            ...content.split('\n').map(l => new Paragraph({ text: l, spacing: { before: 50 } }))
+                                        ]}),
+                                        new TableCell({ children: [new Paragraph(note)] })
+                                    ]
+                                });
+                            }).filter(r => r !== null)
+                        ]
+                    }),
+                    new Paragraph({ text: "" }),
+                    
+                    // Table 4: Footer (Assessment Only)
+                    new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({ children: [ createCell("教師評估", true, "E5E7EB"), createCell(getT('assessment')) ]})
+                        ]
+                    })
+                ]
+            }]
+        });
+        
+        const blob = await Packer.toBlob(doc);
+        saveAs(blob, `${getT('topic') || '教案'}.docx`);
+    };
+</script>
 </body>
 </html>
